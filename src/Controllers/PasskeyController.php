@@ -69,7 +69,15 @@ class PasskeyController extends Controller
         
         // Store challenge in session
         ChallengeStore::put('create', $webauthn->getChallenge());
-        
+
+        if (config('app.debug')) {
+            $args->_debug = [
+                'session_id' => session()->getId(),
+                'session_driver' => config('session.driver'),
+                'challenge_stored' => session()->has('passkey_challenge_create'),
+            ];
+        }
+
         return response()->json($args);
     }
 
@@ -108,7 +116,14 @@ class PasskeyController extends Controller
         // Get and consume challenge
         $challenge = ChallengeStore::pop('create');
         if ($challenge === null) {
-            return json(trans('SysHub\Passkey::messages.error.invalid_challenge'), 1);
+            $msg = trans('SysHub\Passkey::messages.error.invalid_challenge');
+            if (config('app.debug')) {
+                $sessionData = session()->get('passkey_challenge_create');
+                $msg .= ' | session_key_exists: ' . (session()->has('passkey_challenge_create') ? 'yes' : 'no');
+                $msg .= ' | session_id: ' . session()->getId();
+                $msg .= ' | session_driver: ' . config('session.driver');
+            }
+            return json($msg, 1);
         }
         
         try {
