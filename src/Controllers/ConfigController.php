@@ -7,7 +7,7 @@ use Option;
 
 class ConfigController extends Controller
 {
-    public function index()
+    public function render()
     {
         $form = Option::form('passkey', trans('SysHub\Passkey::config.title'), function ($form) {
             $form->text('passkey_rp_id', trans('SysHub\Passkey::config.rp_id.title'))
