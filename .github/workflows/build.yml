@@ -1,0 +1,112 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Plugin
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.1"
+          extensions: openssl, mbstring
+          tools: composer:v2
+
+      - name: Read Version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(grep -oP '"version"\s*:\s*"\K[^"]+' package.json)"
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Failed to read version from package.json"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          composer install --no-dev --optimize-autoloader --no-interaction
+
+      - name: Validate PHP Syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Checking PHP syntax..."
+          find src -name "*.php" -exec php -l {} \;
+          php -l bootstrap.php
+          php -l callbacks.php
+          php -l routes.php
+          echo "All PHP files passed syntax check."
+
+      - name: Validate JavaScript Syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Checking JavaScript syntax..."
+          node --check assets/passkey.js
+          echo "JavaScript syntax check passed."
+
+      - name: Create Build Artifact
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          PLUGIN_NAME="passkey"
+          ZIP_NAME="${PLUGIN_NAME}-v${VERSION}-build.${GITHUB_RUN_NUMBER}.zip"
+
+          # 创建临时构建目录
+          mkdir -p "build/${PLUGIN_NAME}"
+
+          # 复制插件文件（排除开发文件）
+          cp -r assets "build/${PLUGIN_NAME}/"
+          cp -r lang "build/${PLUGIN_NAME}/"
+          cp -r src "build/${PLUGIN_NAME}/"
+          cp -r vendor "build/${PLUGIN_NAME}/"
+          cp -r views "build/${PLUGIN_NAME}/"
+          cp bootstrap.php "build/${PLUGIN_NAME}/"
+          cp callbacks.php "build/${PLUGIN_NAME}/"
+          cp composer.json "build/${PLUGIN_NAME}/"
+          cp package.json "build/${PLUGIN_NAME}/"
+          cp routes.php "build/${PLUGIN_NAME}/"
+          cp README.md "build/${PLUGIN_NAME}/"
+          cp LICENSE "build/${PLUGIN_NAME}/"
+
+          # 创建 zip 包
+          cd build
+          zip -r "../dist/${ZIP_NAME}" "${PLUGIN_NAME}/"
+          cd ..
+
+          echo "artifact=dist/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Created artifact: dist/${ZIP_NAME}"
+          ls -lh "dist/${ZIP_NAME}"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: passkey-v${{ steps.version.outputs.version }}-build.${{ github.run_number }}
+          path: dist/passkey-v${{ steps.version.outputs.version }}-build.${{ github.run_number }}.zip
+          retention-days: 7
+          if-no-files-found: error
