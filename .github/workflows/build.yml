@@ -77,8 +77,9 @@ jobs:
           PLUGIN_NAME="passkey"
           ZIP_NAME="${PLUGIN_NAME}-v${VERSION}-build.${GITHUB_RUN_NUMBER}.zip"
 
-          # 创建临时构建目录
+          # 创建构建和输出目录
           mkdir -p "build/${PLUGIN_NAME}"
+          mkdir -p dist
 
           # 复制插件文件（排除开发文件）
           cp -r assets "build/${PLUGIN_NAME}/"
