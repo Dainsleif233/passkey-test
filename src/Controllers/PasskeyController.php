@@ -68,7 +68,7 @@ class PasskeyController extends Controller
         );
         
         // Store challenge in session
-        ChallengeStore::put('create', $webauthn->getChallenge());
+        ChallengeStore::put('create', $webauthn->getChallenge()->getBinaryString());
 
         if (config('app.debug')) {
             $args->_debug = [

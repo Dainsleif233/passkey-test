@@ -40,7 +40,7 @@ class LoginController extends Controller
         $args = $webauthn->getGetArgs([], 60, true, true, true, true, true, $uv);
         
         // Store challenge in session
-        ChallengeStore::put('login', $webauthn->getChallenge());
+        ChallengeStore::put('login', $webauthn->getChallenge()->getBinaryString());
         
         return response()->json($args);
     }
