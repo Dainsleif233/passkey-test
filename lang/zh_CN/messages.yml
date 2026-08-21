@@ -16,13 +16,18 @@ manage:
   never: 从未
   actions: 操作
   empty: 暂未注册通行密钥
+  loading: 加载中...
   creating: 正在创建通行密钥...
-  success: 通行密钥创建成功
-  error: 创建通行密钥失败
+  success: 操作成功
+  error: 操作失败
   confirm_delete: 确定要删除此通行密钥吗？
+  delete_warning: 删除后将无法使用此通行密钥登录，且此操作不可撤销。
   enter_name: 请输入通行密钥名称
   rename: 重命名
   delete: 删除
+  confirm: 确定
+  cancel: 取消
+  no_result: 无结果
   max_reached: 已达到通行密钥数量上限
 
 error:

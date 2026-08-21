@@ -16,13 +16,18 @@ manage:
   never: Never
   actions: Actions
   empty: No passkeys registered yet
+  loading: Loading...
   creating: Creating passkey...
-  success: Passkey created successfully
-  error: Failed to create passkey
+  success: Operation successful
+  error: Operation failed
   confirm_delete: Are you sure you want to delete this passkey?
+  delete_warning: Deleting this passkey will prevent you from using it to login, and this action cannot be undone.
   enter_name: Enter a name for the passkey
   rename: Rename
   delete: Delete
+  confirm: Confirm
+  cancel: Cancel
+  no_result: No result
   max_reached: Maximum number of passkeys reached
 
 error:

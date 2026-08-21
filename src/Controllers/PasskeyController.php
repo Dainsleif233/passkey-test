@@ -14,14 +14,30 @@ use Illuminate\Http\Request;
 class PasskeyController extends Controller
 {
     /**
-     * Show passkey management page
+     * Show passkey management page or return JSON list
      */
-    public function index()
+    public function index(Request $request)
     {
         $user = Auth::user();
         $passkeys = Passkey::where('uid', $user->uid)
             ->orderBy('created_at', 'desc')
             ->get();
+        
+        // Return JSON for AJAX requests
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => $passkeys->map(function ($pk) {
+                    return [
+                        'id' => $pk->id,
+                        'name' => $pk->name,
+                        'created_at' => $pk->created_at ? $pk->created_at->toDateTimeString() : null,
+                        'last_used_at' => $pk->last_used_at ? $pk->last_used_at->toDateTimeString() : null,
+                    ];
+                }),
+            ]);
+        }
         
         return view('SysHub\Passkey::manage', compact('passkeys'));
     }
