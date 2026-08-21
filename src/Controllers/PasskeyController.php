@@ -32,8 +32,8 @@ class PasskeyController extends Controller
                     return [
                         'id' => $pk->id,
                         'name' => $pk->name,
-                        'created_at' => $pk->created_at ? $pk->created_at->toDateTimeString() : null,
-                        'last_used_at' => $pk->last_used_at ? $pk->last_used_at->toDateTimeString() : null,
+                        'created_at' => $pk->created_at,
+                        'last_used_at' => $pk->last_used_at,
                     ];
                 }),
             ]);
