@@ -153,7 +153,11 @@ class LoginController extends Controller
             ]);
             
         } catch (\Exception $e) {
-            return json(trans('SysHub\Passkey::messages.error.authentication_failed'), 1);
+            $message = trans('SysHub\Passkey::messages.error.authentication_failed');
+            if (config('app.debug')) {
+                $message .= ': ' . $e->getMessage();
+            }
+            return json($message, 1);
         }
     }
 }
