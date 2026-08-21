@@ -14,7 +14,7 @@ Route::prefix('auth/passkey')
 
 // User passkey management (verified user)
 Route::prefix('user/passkey')
-    ->middleware('verified')
+    ->middleware(['web', 'authorize', 'verified'])
     ->group(function () {
         Route::get('', 'PasskeyController@index');
         Route::get('create-options', 'PasskeyController@createOptions')

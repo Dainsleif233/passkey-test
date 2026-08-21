@@ -2,6 +2,7 @@
 
 namespace SysHub\Passkey\Controllers;
 
+use App\Services\OptionForm;
 use App\Http\Controllers\Controller;
 use Option;
 
@@ -9,7 +10,7 @@ class ConfigController extends Controller
 {
     public function render()
     {
-        $form = Option::form('passkey', trans('SysHub\Passkey::config.title'), function ($form) {
+        $configForm = Option::form('passkey', trans('SysHub\Passkey::config.title'), function (OptionForm $form) {
             $form->text('passkey_rp_id', trans('SysHub\Passkey::config.rp_id.title'))
                 ->description(trans('SysHub\Passkey::config.rp_id.description'))
                 ->placeholder('example.com');
@@ -34,6 +35,6 @@ class ConfigController extends Controller
                 ->description(trans('SysHub\Passkey::config.max_passkeys.description'));
         })->handle();
 
-        return view('SysHub\Passkey::config', compact('form'));
+        return view('SysHub\Passkey::config', ['config' => $configForm]);
     }
 }
