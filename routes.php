@@ -12,9 +12,9 @@ Route::prefix('auth/passkey')
             ->middleware('throttle:10,1');
     });
 
-// User passkey management (authorized)
+// User passkey management (verified user)
 Route::prefix('user/passkey')
-    ->middleware(['web', 'authorize'])
+    ->middleware('verified')
     ->group(function () {
         Route::get('', 'PasskeyController@index');
         Route::get('create-options', 'PasskeyController@createOptions')

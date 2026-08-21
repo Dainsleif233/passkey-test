@@ -1,23 +1,9 @@
 {% extends 'admin.base' %}
-
+{% block title %}{{ trans('SysHub\\Passkey::config.title') }} - {{ site_name }}{% endblock %}
 {% block content %}
-<div class="content-header">
-    <div class="container-fluid">
-        <div class="d-flex justify-content-between flex-wrap">
-            <div>
-                <h1 class="m-0">{{ trans('SysHub\\Passkey::config.title') }}</h1>
-            </div>
-            <div>
-                <div class="breadcrumb"></div>
-            </div>
-        </div>
+  <div class="row">
+    <div class="col-md-6">
+      {{ config|raw }}
     </div>
-</div>
-<div class="container-fluid">
-    <div class="card">
-        <div class="card-body">
-            {{ form|raw }}
-        </div>
-    </div>
-</div>
+  </div>
 {% endblock %}
