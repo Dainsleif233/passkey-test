@@ -110,7 +110,7 @@ class LoginController extends Controller
             
             // Verify user handle if present (skip if null or empty)
             if ($userHandle !== null && $userHandle !== '') {
-                $unpacked = unpack('J', $userHandle);
+                $unpacked = unpack('Juid', $userHandle);
                 if ($unpacked === false || (int) $unpacked['uid'] !== (int) $passkey->uid) {
                     return json(trans('SysHub\Passkey::messages.error.invalid_user_handle'), 1);
                 }
