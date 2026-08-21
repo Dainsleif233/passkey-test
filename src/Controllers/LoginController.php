@@ -152,11 +152,14 @@ class LoginController extends Controller
                 'redirectTo' => session()->pull('last_requested_path', url('/user')),
             ]);
             
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $message = trans('SysHub\Passkey::messages.error.authentication_failed');
             if (config('app.debug')) {
-                $message .= ': ' . $e->getMessage();
+                $message .= ': ' . get_class($e) . ': ' . $e->getMessage();
             }
+            \Log::error('[Passkey] Authentication failed', [
+                'exception' => $e,
+            ]);
             return json($message, 1);
         }
     }

@@ -172,11 +172,15 @@ class PasskeyController extends Controller
                 ],
             ]);
             
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $message = trans('SysHub\Passkey::messages.error.registration_failed');
             if (config('app.debug')) {
-                $message .= ': ' . $e->getMessage();
+                $message .= ': ' . get_class($e) . ': ' . $e->getMessage();
             }
+            \Log::error('[Passkey] Registration failed', [
+                'exception' => $e,
+                'uid' => Auth::id(),
+            ]);
             return json($message, 1);
         }
     }
