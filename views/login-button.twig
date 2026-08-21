@@ -1,0 +1,15 @@
+<div id="syshub-passkey-login" style="display:none">
+    <div class="text-center" style="margin: 1rem 0">
+        <div class="text-muted mb-2">— {{ trans('SysHub\\Passkey::messages.login.divider') }} —</div>
+        <button type="button" class="btn btn-block btn-outline-primary" id="syshub-passkey-login-btn">
+            <i class="fa fa-fingerprint"></i> {{ trans('SysHub\\Passkey::messages.login.button') }}
+        </button>
+        <div id="syshub-passkey-login-message" class="mt-2" style="display:none"></div>
+    </div>
+</div>
+
+<script>
+if (window.PublicKeyCredential) {
+    document.getElementById('syshub-passkey-login').style.display = '';
+}
+</script>

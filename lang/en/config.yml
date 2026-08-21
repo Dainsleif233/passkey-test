@@ -1,0 +1,26 @@
+title: Passkey Settings
+
+rp_id:
+  title: RP ID
+  description: Relying Party ID (domain name). Leave empty to use current domain.
+
+rp_name:
+  title: RP Name
+  description: Relying Party display name. Leave empty to use site name.
+  placeholder: My Site
+
+user_verification:
+  title: User Verification
+  description: User verification level for passkey authentication.
+
+show_login_button:
+  title: Show Login Button
+  description: Display passkey login button on login page.
+
+remember_login:
+  title: Remember Login
+  description: Remember passkey login session.
+
+max_passkeys:
+  title: Max Passkeys per User
+  description: Maximum number of passkeys a user can register.

@@ -1,0 +1,65 @@
+{% extends 'user.base' %}
+
+{% block content %}
+<div class="box">
+    <div class="box-header with-border">
+        <h3 class="box-title">{{ trans('SysHub\\Passkey::messages.manage.title') }}</h3>
+        <div class="box-tools pull-right">
+            <button type="button" class="btn btn-box-tool" id="passkey-add-btn">
+                <i class="fa fa-plus"></i> {{ trans('SysHub\\Passkey::messages.manage.add') }}
+            </button>
+        </div>
+    </div>
+    <div class="box-body">
+        <div id="passkey-alert" class="alert" style="display:none"></div>
+        
+        {% if passkeys|length > 0 %}
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>{{ trans('SysHub\\Passkey::messages.manage.name') }}</th>
+                    <th>{{ trans('SysHub\\Passkey::messages.manage.created_at') }}</th>
+                    <th>{{ trans('SysHub\\Passkey::messages.manage.last_used_at') }}</th>
+                    <th>{{ trans('SysHub\\Passkey::messages.manage.actions') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for passkey in passkeys %}
+                <tr>
+                    <td>{{ passkey.name }}</td>
+                    <td>{{ passkey.created_at }}</td>
+                    <td>{{ passkey.last_used_at ?? trans('SysHub\\Passkey::messages.manage.never') }}</td>
+                    <td>
+                        <button type="button" class="btn btn-xs btn-primary passkey-rename-btn" data-id="{{ passkey.id }}" data-name="{{ passkey.name }}">
+                            <i class="fa fa-pencil"></i>
+                        </button>
+                        <button type="button" class="btn btn-xs btn-danger passkey-delete-btn" data-id="{{ passkey.id }}">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted text-center">{{ trans('SysHub\\Passkey::messages.manage.empty') }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<script id="passkey-config" type="application/json">
+{{ {
+    createOptionsUrl: url('user/passkey/create-options'),
+    registerUrl: url('user/passkey'),
+    renameUrl: url('user/passkey') ~ '/',
+    deleteUrl: url('user/passkey') ~ '/',
+    messages: {
+        creating: trans('SysHub\\Passkey::messages.manage.creating'),
+        success: trans('SysHub\\Passkey::messages.manage.success'),
+        error: trans('SysHub\\Passkey::messages.manage.error'),
+        confirmDelete: trans('SysHub\\Passkey::messages.manage.confirm_delete'),
+        enterName: trans('SysHub\\Passkey::messages.manage.enter_name')
+    }
+}|json_encode|raw }}
+</script>
+{% endblock %}

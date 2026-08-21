@@ -1,0 +1,20 @@
+{
+    "name": "syshub/passkey",
+    "description": "WebAuthn/FIDO2 passkey login plugin for Blessing Skin Server",
+    "type": "blessing-skin-plugin",
+    "license": "GPL-3.0-only",
+    "authors": [
+        {
+            "name": "Dainsleif"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "lbuchs/webauthn": "^2.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "SysHub\\Passkey\\": "src/"
+        }
+    }
+}

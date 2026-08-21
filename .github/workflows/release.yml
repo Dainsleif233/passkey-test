@@ -1,0 +1,239 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark as prerelease"
+        type: boolean
+        default: false
+      draft:
+        description: "Create as draft"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.1"
+          extensions: openssl, mbstring
+          tools: composer:v2
+
+      - name: Read Version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(grep -oP '"version"\s*:\s*"\K[^"]+' package.json)"
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Failed to read version from package.json"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION (tag: $VERSION)"
+
+      - name: Check If Tag Exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag '$TAG' already exists, please update the version in package.json first"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag '$TAG' already exists on the remote repository, please update the version in package.json first"
+            exit 1
+          fi
+
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          composer install --no-dev --optimize-autoloader --no-interaction
+
+      - name: Validate PHP Syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Checking PHP syntax..."
+          find src -name "*.php" -exec php -l {} \;
+          php -l bootstrap.php
+          php -l callbacks.php
+          php -l routes.php
+          echo "All PHP files passed syntax check."
+
+      - name: Validate JavaScript Syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Checking JavaScript syntax..."
+          node --check assets/passkey.js
+          echo "JavaScript syntax check passed."
+
+      - name: Create Build Artifact
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          PLUGIN_NAME="passkey"
+          ZIP_NAME="${PLUGIN_NAME}-v${VERSION}.zip"
+
+          # 创建临时构建目录
+          mkdir -p "build/${PLUGIN_NAME}"
+
+          # 复制插件文件（排除开发文件）
+          cp -r assets "build/${PLUGIN_NAME}/"
+          cp -r lang "build/${PLUGIN_NAME}/"
+          cp -r src "build/${PLUGIN_NAME}/"
+          cp -r vendor "build/${PLUGIN_NAME}/"
+          cp -r views "build/${PLUGIN_NAME}/"
+          cp bootstrap.php "build/${PLUGIN_NAME}/"
+          cp callbacks.php "build/${PLUGIN_NAME}/"
+          cp composer.json "build/${PLUGIN_NAME}/"
+          cp package.json "build/${PLUGIN_NAME}/"
+          cp routes.php "build/${PLUGIN_NAME}/"
+          cp README.md "build/${PLUGIN_NAME}/"
+          cp LICENSE "build/${PLUGIN_NAME}/"
+
+          # 创建 zip 包
+          cd build
+          zip -r "../dist/${ZIP_NAME}" "${PLUGIN_NAME}/"
+          cd ..
+
+          echo "artifact=dist/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Created artifact: dist/${ZIP_NAME}"
+          ls -lh "dist/${ZIP_NAME}"
+
+      - name: Generate Changelog
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          PREV_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+
+          {
+            echo "## 更新内容"
+            echo
+
+            if [[ -n "$PREV_TAG" ]]; then
+              echo "自 \`$PREV_TAG\` 以来的变更："
+              echo
+              RANGE="${PREV_TAG}..HEAD"
+            else
+              echo "初始版本发布说明："
+              echo
+              RANGE="HEAD"
+            fi
+
+            mapfile -t COMMITS < <(git log $RANGE --pretty=format:'%s|%h' --no-merges)
+
+            if [[ ${#COMMITS[@]} -eq 0 || -z "${COMMITS[0]:-}" ]]; then
+              echo "_此版本无提交记录。_"
+            else
+              declare -A SECTIONS
+              SECTIONS[feat]="### 新功能"
+              SECTIONS[fix]="### Bug 修复"
+              SECTIONS[refactor]="### 重构"
+              SECTIONS[perf]="### 性能优化"
+              SECTIONS[docs]="### 文档"
+              SECTIONS[chore]="### 杂项"
+              SECTIONS[other]="### 其他变更"
+
+              declare -A BUCKETS
+              for key in feat fix refactor perf docs chore other; do
+                BUCKETS[$key]=""
+              done
+
+              COMMIT_PATTERN='^(feat|fix|refactor|perf|docs|chore|ver|update)(\([^)]+\))?(!)?:[[:space:]]*(.+)$'
+
+              for line in "${COMMITS[@]}"; do
+                subject="${line%%|*}"
+                hash="${line##*|}"
+                if [[ "$subject" =~ $COMMIT_PATTERN ]]; then
+                  type="${BASH_REMATCH[1]}"
+                  body="${BASH_REMATCH[4]}"
+                  case "$type" in
+                    ver|update) type="chore" ;;
+                  esac
+                  BUCKETS[$type]+="- ${body}（[\`${hash}\`](https://github.com/${{ github.repository }}/commit/${hash})）"$'\n'
+                else
+                  BUCKETS[other]+="- ${subject}（[\`${hash}\`](https://github.com/${{ github.repository }}/commit/${hash})）"$'\n'
+                fi
+              done
+
+              for key in feat fix refactor perf docs chore other; do
+                if [[ -n "${BUCKETS[$key]}" ]]; then
+                  echo "${SECTIONS[$key]}"
+                  echo
+                  printf '%s' "${BUCKETS[$key]}"
+                  echo
+                fi
+              done
+            fi
+
+            echo
+            echo "### 安装方法"
+            echo
+            echo "1. 下载下方的 \`${{ steps.artifact.outputs.artifact }}\` 文件"
+            echo "2. 解压到 Blessing Skin 的 \`plugins/\` 目录"
+            echo "3. 在后台启用插件"
+            echo
+            echo "### 环境要求"
+            echo
+            echo "- Blessing Skin Server ^6.0"
+            echo "- PHP 8.1+"
+            echo "- openssl 和 mbstring 扩展"
+            echo "- HTTPS（localhost 除外）"
+            echo
+            echo "**完整变更日志**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-$(git rev-list --max-parents=0 HEAD)}...${TAG}"
+          } > release_notes.md
+
+          echo "----- Changelog -----"
+          cat release_notes.md
+
+      - name: Create Tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "refs/tags/$TAG"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          files: |
+            ${{ steps.artifact.outputs.artifact }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

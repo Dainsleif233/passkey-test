@@ -1,0 +1,25 @@
+# 实施计划文档，不纳入版本库
+/PLAN.md
+/CONTEXT.md
+/CONTEXT临时.md
+
+# Composer
+/vendor/
+composer.lock
+
+# 构建产物
+/build/
+/dist/
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+
+# 工具缓存与日志
+.php-cs-fixer.cache
+*.log
+
+# 系统文件
+Thumbs.db
+.DS_Store
