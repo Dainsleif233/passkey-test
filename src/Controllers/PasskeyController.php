@@ -156,12 +156,12 @@ class PasskeyController extends Controller
             $passkey = new Passkey();
             $passkey->uid = $user->uid;
             $passkey->name = $name;
-            $passkey->credential_id = Base64Url::encode($result['credentialId']->getBinaryString());
-            $passkey->credential_id_hash = hash('sha256', $result['credentialId']->getBinaryString());
-            $passkey->public_key = $result['credentialPublicKey'];
-            $passkey->attestation_format = $result['attestationFormat'] ?? 'none';
-            $passkey->aaguid = $result['AAGUID'] ?? '';
-            $passkey->counter = $result['signatureCounter'] ?? 0;
+            $passkey->credential_id = Base64Url::encode($result->credentialId->getBinaryString());
+            $passkey->credential_id_hash = hash('sha256', $result->credentialId->getBinaryString());
+            $passkey->public_key = $result->credentialPublicKey;
+            $passkey->attestation_format = $result->attestationFormat ?? 'none';
+            $passkey->aaguid = $result->AAGUID ?? '';
+            $passkey->counter = $result->signatureCounter ?? 0;
             $passkey->save();
             
             return json(trans('SysHub\Passkey::messages.register.success'), 0, [
