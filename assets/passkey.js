@@ -123,13 +123,13 @@
         passkeys.forEach(function (pk) {
             html += '<tr data-id="' + pk.id + '">' +
                 '<td><span class="passkey-name">' + escapeHtml(pk.name) + '</span>' +
-                ' <a href="javascript:void(0)" class="passkey-rename-btn text-muted" data-id="' + pk.id + '" data-name="' + escapeHtml(pk.name) + '" title="' + config.messages.enterName + '">' +
-                '<i class="fa fa-pencil"></i></a></td>' +
+                ' <a href="#" class="passkey-rename-btn ml-2" data-id="' + pk.id + '" data-name="' + escapeHtml(pk.name) + '" title="' + config.messages.enterName + '">' +
+                '<i class="fas fa-edit"></i></a></td>' +
                 '<td>' + formatDate(pk.created_at) + '</td>' +
                 '<td>' + formatDate(pk.last_used_at) + '</td>' +
-                '<td><button type="button" class="btn btn-danger btn-xs passkey-delete-btn" data-id="' + pk.id + '">' +
-                '<i class="fa fa-trash"></i></button></td>' +
-                '</tr>';
+                '<td><button class="btn btn-danger passkey-delete-btn" data-id="' + pk.id + '">' +
+                config.messages.manage.delete +
+                '</button></td>' + '</tr>';
         });
         tbody.innerHTML = html;
 
