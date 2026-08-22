@@ -58,8 +58,7 @@ class PasskeyController extends Controller
         
         $user = Auth::user();
         $webauthn = WebAuthnFactory::make();
-        $uv = WebAuthnFactory::getUserVerification();
-        
+
         // Get existing credential IDs to exclude
         $excludeIds = Passkey::where('uid', $user->uid)
             ->pluck('credential_id')
@@ -69,17 +68,20 @@ class PasskeyController extends Controller
             ->filter()
             ->values()
             ->all();
-        
-        // Get creation options
+
+        // lbuchs/WebAuthn v2 getCreateArgs signature:
+        //   (userId, userName, userDisplayName, timeout,
+        //    requireResidentKey, requireUserVerification, excludeCredentials, extensions)
+        // Resident keys are required for usernameless login; UV must be a
+        // boolean — never pass the raw option string (always truthy in PHP).
         $userId = pack('J', $user->uid);
         $args = $webauthn->getCreateArgs(
             $userId,
             $user->email,
             $user->nickname,
             60,
-            'preferred',
-            $uv,
-            null,
+            true, // requireResidentKey: discoverable credential
+            WebAuthnFactory::requireUserVerification(),
             $excludeIds
         );
         
@@ -143,15 +145,17 @@ class PasskeyController extends Controller
         
         try {
             $webauthn = WebAuthnFactory::make();
-            $uv = WebAuthnFactory::getUserVerification();
-            
-            // Verify attestation
+
+            // Verify attestation. lbuchs/WebAuthn v2 processCreate signature:
+            //   (clientDataJSON, attestationObject, challenge,
+            //    requireUserVerification, requireResidentKey,
+            //    failIfRootMismatch, requireCtsProfileMatch)
             $result = $webauthn->processCreate(
                 $clientDataJSON,
                 $attestationObject,
                 $challenge,
-                $uv,
-                true,
+                WebAuthnFactory::requireUserVerification(),
+                true,  // requireResidentKey (must match createOptions)
                 false, // failIfRootMismatch = false
                 false  // requireCtsProfileMatch = false
             );
@@ -173,11 +177,19 @@ class PasskeyController extends Controller
                 ? $credentialId
                 : $credentialId->getBinaryString();
 
+            $credentialIdHash = hash('sha256', $credentialIdBinary);
+
+            // Friendly error for duplicate registration (unique index would
+            // otherwise surface as a generic QueryException below).
+            if (Passkey::where('credential_id_hash', $credentialIdHash)->exists()) {
+                return json(trans('SysHub\Passkey::messages.error.credential_exists'), 1);
+            }
+
             $passkey = new Passkey();
             $passkey->uid = $user->uid;
             $passkey->name = $name;
             $passkey->credential_id = Base64Url::encode($credentialIdBinary);
-            $passkey->credential_id_hash = hash('sha256', $credentialIdBinary);
+            $passkey->credential_id_hash = $credentialIdHash;
             $publicKey = $result->credentialPublicKey;
             $passkey->public_key = Base64Url::encode(
                 is_string($publicKey) ? $publicKey : $publicKey->getBinaryString()
@@ -186,12 +198,26 @@ class PasskeyController extends Controller
             $passkey->aaguid = $result->AAGUID ?? '';
             $passkey->counter = $result->signatureCounter ?? 0;
             $passkey->save();
-            
-            return json(trans('SysHub\Passkey::messages.register.success'), 0, [
-                'passkey' => [
-                    'id' => $passkey->id,
-                    'name' => $passkey->name,
-                    'created_at' => $passkey->created_at->toDateTimeString(),
+
+            // Re-check the limit after saving to close the count/save race:
+            // if concurrent registrations pushed us over the cap, roll back
+            // this newest one.
+            if (Passkey::where('uid', $user->uid)->count() > $maxPasskeys) {
+                $passkey->delete();
+                return json(trans('SysHub\Passkey::messages.error.max_passkeys_reached', ['max' => $maxPasskeys]), 1);
+            }
+
+            // Note: the created_at accessor already returns "Y-m-d H:i:s"
+            // (a plain string), so do NOT call ->toDateTimeString() on it.
+            return response()->json([
+                'code' => 0,
+                'message' => trans('SysHub\Passkey::messages.register.success'),
+                'data' => [
+                    'passkey' => [
+                        'id' => $passkey->id,
+                        'name' => $passkey->name,
+                        'created_at' => (string) $passkey->created_at,
+                    ],
                 ],
             ]);
             

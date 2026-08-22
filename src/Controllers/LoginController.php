@@ -34,10 +34,11 @@ class LoginController extends Controller
         }
         
         $webauthn = WebAuthnFactory::make();
-        $uv = WebAuthnFactory::getUserVerification();
-        
-        // Get assertion options (empty credential IDs for usernameless/discoverable)
-        $args = $webauthn->getGetArgs([], 60, true, true, true, true, true, $uv);
+
+        // Get assertion options (empty credential IDs for usernameless/discoverable).
+        // UV is enforced server-side in processGet; do not pass the raw option
+        // string here — lbuchs/WebAuthn expects booleans.
+        $args = $webauthn->getGetArgs([], 60);
         
         // Store challenge in session
         ChallengeStore::put('login', $webauthn->getChallenge()->getBinaryString());
@@ -97,23 +98,20 @@ class LoginController extends Controller
         
         try {
             $webauthn = WebAuthnFactory::make();
-            $uv = WebAuthnFactory::getUserVerification();
-            
-            // Verify assertion
-            // Note: processGet 8th param is requireUserVerification
-            // We check UV preference from config: 'required' enforces it, others don't
-            $requireUV = ($uv === 'required');
-            $result = $webauthn->processGet(
+
+            // Verify assertion. lbuchs/WebAuthn processGet signature:
+            //   (clientDataJSON, authenticatorData, signature, credentialPublicKey,
+            //    challenge, previousCounter, requireUserVerification)
+            $webauthn->processGet(
                 $clientDataJSON,
                 $authenticatorData,
                 $signature,
                 $publicKey,
                 $challenge,
-                $passkey->counter,
-                $uv,
-                $requireUV
+                (int) $passkey->counter,
+                WebAuthnFactory::requireUserVerification()
             );
-            
+
             // Verify user handle if present (skip if null or empty)
             if ($userHandle !== null && $userHandle !== '') {
                 $unpacked = unpack('Juid', $userHandle);
@@ -121,10 +119,22 @@ class LoginController extends Controller
                     return json(trans('SysHub\Passkey::messages.error.invalid_user_handle'), 1);
                 }
             }
-            
-            // Update counter (only if new > 0)
+
+            // Clone detection: reject the assertion when the signature counter
+            // regresses (both values > 0 means this authenticator uses counters).
             $newCounter = $webauthn->getSignatureCounter();
-            if ($newCounter !== null && $newCounter > 0 && $newCounter > $passkey->counter) {
+            if ($newCounter !== null && $newCounter > 0
+                && (int) $passkey->counter > 0 && $newCounter <= (int) $passkey->counter
+            ) {
+                \Log::warning('[Passkey] Signature counter regression (possible cloned credential)', [
+                    'passkey_id' => $passkey->id,
+                    'stored_counter' => (int) $passkey->counter,
+                    'received_counter' => $newCounter,
+                ]);
+                return json(trans('SysHub\Passkey::messages.error.counter_regression'), 1);
+            }
+
+            if ($newCounter !== null && $newCounter > 0) {
                 $passkey->counter = $newCounter;
             }
             
@@ -143,19 +153,31 @@ class LoginController extends Controller
             if ($user->status === User::BANNED) {
                 return json(trans('SysHub\Passkey::messages.error.user_banned'), 1);
             }
-            
+
+            // Enforce email verification, same as password login (EnsureEmailIsVerified)
+            if (method_exists($user, 'hasVerifiedEmail') && ! $user->hasVerifiedEmail()) {
+                return json(trans('SysHub\Passkey::messages.error.user_not_verified'), 1);
+            }
+
             // Dispatch events
             $dispatcher = app('events');
             $dispatcher->dispatch('auth.login.ready', [$user]);
-            
-            // Login the user
-            Auth::login($user, (bool) option('passkey_remember_login', true));
-            
+
+            $remember = filter_var(option('passkey_remember_login', true), FILTER_VALIDATE_BOOLEAN);
+            Auth::login($user, $remember);
+
             // Dispatch succeeded event
             $dispatcher->dispatch('auth.login.succeeded', [$user]);
-            
-            return json(trans('SysHub\Passkey::messages.login.success'), 0, [
-                'redirectTo' => session()->pull('last_requested_path', url('/user')),
+
+            // Explicit response shape: BSS's json() helper's third argument is
+            // headers, not payload — build the JSON ourselves so the frontend
+            // reliably receives data.redirectTo.
+            return response()->json([
+                'code' => 0,
+                'message' => trans('SysHub\Passkey::messages.login.success'),
+                'data' => [
+                    'redirectTo' => session()->pull('last_requested_path', url('/user')),
+                ],
             ]);
             
         } catch (\Throwable $e) {

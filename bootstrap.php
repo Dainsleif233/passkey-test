@@ -13,7 +13,7 @@ return function (Filter $filter, Plugin $plugin, Dispatcher $events) {
 
     // Login page button injection
     $filter->add('auth_page_rows:login', function ($rows) {
-        if (option('passkey_show_login_button', true)) {
+        if (filter_var(option('passkey_show_login_button', true), FILTER_VALIDATE_BOOLEAN)) {
             $length = count($rows);
             array_splice($rows, $length - 1, 0, ['SysHub\Passkey::login-button']);
         }

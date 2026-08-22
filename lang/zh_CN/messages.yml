@@ -40,8 +40,15 @@ error:
   invalid_user_handle: 无效的用户句柄。
   user_not_found: 用户未找到。
   user_banned: 您的账号已被封禁。
+  user_not_verified: 请先验证邮箱后再使用通行密钥登录。
+  counter_regression: 安全检查失败：检测到异常的签名计数器，此通行密钥可能已被复制。
   authentication_failed: 认证失败。
   registration_failed: 注册失败。
+  credential_exists: 该通行密钥已注册过。
+  max_passkeys_reached: 已达到通行密钥数量上限（最多 :max 个）。
   unauthorized: 未授权访问。
   name_required: 请输入通行密钥名称。
   name_too_long: 名称长度不能超过64个字符。
+
+register:
+  success: 通行密钥注册成功

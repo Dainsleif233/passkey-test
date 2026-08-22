@@ -87,6 +87,6 @@
         noResult: trans('SysHub\\Passkey::messages.manage.no_result'),
         delete: trans('SysHub\\Passkey::messages.manage.delete')
     }
-}|json_encode|raw }}
+}|json_encode(constant('JSON_HEX_TAG'))|raw }}
 </script>
 {% endblock %}

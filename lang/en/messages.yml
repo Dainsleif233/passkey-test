@@ -40,8 +40,15 @@ error:
   invalid_user_handle: Invalid user handle.
   user_not_found: User not found.
   user_banned: Your account has been banned.
+  user_not_verified: Please verify your email address before signing in with a passkey.
+  counter_regression: Security check failed: an invalid signature counter was detected, this passkey may have been cloned.
   authentication_failed: Authentication failed.
   registration_failed: Registration failed.
+  credential_exists: This passkey has already been registered.
+  max_passkeys_reached: Maximum number of passkeys reached (max :max).
   unauthorized: Unauthorized access.
   name_required: Please enter a name for the passkey.
   name_too_long: Name must be 64 characters or less.
+
+register:
+  success: Passkey registered successfully

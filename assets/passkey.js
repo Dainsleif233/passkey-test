@@ -71,8 +71,9 @@
 
     function formatDate(dateStr) {
         if (!dateStr) return config.messages.never;
-        var d = new Date(dateStr);
-        return d.toLocaleString();
+        // "YYYY-MM-DD HH:mm:ss" is not parseable by older Safari; use "T"
+        var d = new Date(dateStr.replace(' ', 'T'));
+        return isNaN(d.getTime()) ? dateStr : d.toLocaleString();
     }
 
     function escapeHtml(str) {
@@ -427,6 +428,16 @@
         if (deleteConfirm) {
             deleteConfirm.addEventListener('click', doDelete);
         }
+
+        // Clear stale callbacks when a modal is dismissed without confirming,
+        // otherwise a leftover delete callback would be executed by a later
+        // create/rename confirmation.
+        $('#passkey-modal').on('hidden.bs.modal', function () {
+            pendingCallback = null;
+        });
+        $('#passkey-delete-modal').on('hidden.bs.modal', function () {
+            pendingCallback = null;
+        });
         
         // Load passkeys
         loadPasskeys();
