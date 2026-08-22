@@ -32,7 +32,15 @@ class ConfigController extends Controller
                 ->label(trans('SysHub\Passkey::config.remember_login.description'));
 
             $form->text('passkey_max_passkeys', trans('SysHub\Passkey::config.max_passkeys.title'))
-                ->description(trans('SysHub\Passkey::config.max_passkeys.description'));
+                ->description(trans('SysHub\Passkey::config.max_passkeys.description'))
+                // Normalize on save: the field is free-form text, and a
+                // non-numeric value would otherwise be stored verbatim and later
+                // cast to 0, silently lowering the cap to 1.
+                ->format(function ($value) {
+                    $value = filter_var($value, FILTER_VALIDATE_INT);
+
+                    return (string) ($value === false ? 5 : min(50, max(1, $value)));
+                });
         })->handle();
 
         return view('SysHub\Passkey::config', ['config' => $configForm]);

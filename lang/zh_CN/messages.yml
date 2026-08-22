@@ -29,6 +29,8 @@ manage:
   cancel: 取消
   no_result: 无结果
   max_reached: 已达到通行密钥数量上限
+  not_allowed: 操作已取消或被浏览器拒绝。
+  invalid_state: 此通行密钥已在当前账号注册过。
 
 error:
   webauthn_not_installed: WebAuthn 库未安装，请运行 composer install。
@@ -42,6 +44,14 @@ error:
   user_banned: 您的账号已被封禁。
   user_not_verified: 请先验证邮箱后再使用通行密钥登录。
   counter_regression: 安全检查失败：检测到异常的签名计数器，此通行密钥可能已被复制。
+  invalid_origin: 请求来源与本站不符。
+  invalid_relying_party: 此通行密钥属于其他站点。
+  invalid_signature: 签名验证失败。
+  invalid_public_key: 无法使用已保存的公钥。
+  certificate_not_trusted: 认证器证书不受信任。
+  user_not_present: 未检测到认证器上的用户操作。
+  user_verification_failed: 认证器无法完成用户验证。请设置 PIN 或生物识别，或联系管理员降低用户验证级别。
+  android_not_trusted: 此 Android 设备未通过 Google 认证。
   authentication_failed: 认证失败。
   registration_failed: 注册失败。
   credential_exists: 该通行密钥已注册过。
@@ -52,3 +62,9 @@ error:
 
 register:
   success: 通行密钥注册成功
+
+rename:
+  success: 通行密钥重命名成功
+
+delete:
+  success: 通行密钥删除成功

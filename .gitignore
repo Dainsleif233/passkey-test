@@ -1,6 +1,7 @@
 # Composer
+# composer.lock IS committed on purpose: releases bundle vendor/, so the exact
+# resolved library version must be reproducible.
 /vendor/
-composer.lock
 
 # 构建产物
 /build/

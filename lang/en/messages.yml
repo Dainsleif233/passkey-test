@@ -29,6 +29,8 @@ manage:
   cancel: Cancel
   no_result: No result
   max_reached: Maximum number of passkeys reached
+  not_allowed: The operation was cancelled or not permitted by your browser.
+  invalid_state: This passkey is already registered on this account.
 
 error:
   webauthn_not_installed: WebAuthn library not installed. Please run composer install.
@@ -41,7 +43,15 @@ error:
   user_not_found: User not found.
   user_banned: Your account has been banned.
   user_not_verified: Please verify your email address before signing in with a passkey.
-  counter_regression: Security check failed: an invalid signature counter was detected, this passkey may have been cloned.
+  counter_regression: "Security check failed: an invalid signature counter was detected, this passkey may have been cloned."
+  invalid_origin: The request came from an unexpected origin.
+  invalid_relying_party: This passkey belongs to a different site.
+  invalid_signature: Signature verification failed.
+  invalid_public_key: The stored public key could not be used.
+  certificate_not_trusted: The authenticator's certificate is not trusted.
+  user_not_present: No user interaction was detected on the authenticator.
+  user_verification_failed: Your authenticator could not verify you. Set up a PIN or biometrics, or ask the administrator to lower the user verification level.
+  android_not_trusted: This Android device is not certified by Google.
   authentication_failed: Authentication failed.
   registration_failed: Registration failed.
   credential_exists: This passkey has already been registered.
@@ -52,3 +62,9 @@ error:
 
 register:
   success: Passkey registered successfully
+
+rename:
+  success: Passkey renamed successfully
+
+delete:
+  success: Passkey deleted successfully

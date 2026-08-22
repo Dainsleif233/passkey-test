@@ -3,13 +3,15 @@
 namespace SysHub\Passkey\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Events\UserLoggedIn;
 use App\Models\User;
 use Auth;
 use SysHub\Passkey\Models\Passkey;
 use SysHub\Passkey\Support\Base64Url;
 use SysHub\Passkey\Support\ChallengeStore;
+use SysHub\Passkey\Support\Requirements;
+use SysHub\Passkey\Support\WebAuthnErrors;
 use SysHub\Passkey\Support\WebAuthnFactory;
-use lbuchs\WebAuthn\WebAuthn;
 use Illuminate\Http\Request;
 
 class LoginController extends Controller
@@ -19,13 +21,8 @@ class LoginController extends Controller
      */
     public function options()
     {
-        // Precondition checks
-        if (!class_exists(WebAuthn::class)) {
-            return json(trans('SysHub\Passkey::messages.error.webauthn_not_installed'), 1);
-        }
-        
-        if (!\Schema::hasTable('passkeys')) {
-            return json(trans('SysHub\Passkey::messages.error.table_not_found'), 1);
+        if ($failure = Requirements::failure()) {
+            return $failure;
         }
         
         // Reject if already logged in
@@ -36,9 +33,23 @@ class LoginController extends Controller
         $webauthn = WebAuthnFactory::make();
 
         // Get assertion options (empty credential IDs for usernameless/discoverable).
-        // UV is enforced server-side in processGet; do not pass the raw option
-        // string here — lbuchs/WebAuthn expects booleans.
-        $args = $webauthn->getGetArgs([], 60);
+        // lbuchs/WebAuthn getGetArgs signature:
+        //   (credentialIds, timeout, allowUsb, allowNfc, allowBle, allowHybrid,
+        //    allowInternal, requireUserVerification)
+        // The UV level must be declared to the browser as well, otherwise the
+        // options always say 'preferred' while processGet enforces 'required'
+        // server-side — authenticators without UV capability would then always
+        // fail with a generic error.
+        $args = $webauthn->getGetArgs(
+            [],
+            60,
+            true,
+            true,
+            true,
+            true,
+            true,
+            WebAuthnFactory::getUserVerification()
+        );
         
         // Store challenge in session
         ChallengeStore::put('login', $webauthn->getChallenge()->getBinaryString());
@@ -51,13 +62,8 @@ class LoginController extends Controller
      */
     public function login(Request $request)
     {
-        // Precondition checks
-        if (!class_exists(WebAuthn::class)) {
-            return json(trans('SysHub\Passkey::messages.error.webauthn_not_installed'), 1);
-        }
-        
-        if (!\Schema::hasTable('passkeys')) {
-            return json(trans('SysHub\Passkey::messages.error.table_not_found'), 1);
+        if ($failure = Requirements::failure()) {
+            return $failure;
         }
         
         // Reject if already logged in
@@ -65,15 +71,27 @@ class LoginController extends Controller
             return json(trans('SysHub\Passkey::messages.error.already_logged_in'), 1);
         }
         
-        // Validate and decode base64url fields
-        $id = Base64Url::decode($request->input('id', ''));
-        $clientDataJSON = Base64Url::decode($request->input('clientDataJSON', ''));
-        $authenticatorData = Base64Url::decode($request->input('authenticatorData', ''));
-        $signature = Base64Url::decode($request->input('signature', ''));
-        $userHandle = Base64Url::decode($request->input('userHandle', ''));
-        
+        // Validate and decode base64url fields. Use decodeInput(): a JSON null
+        // or array in the request body must not reach decode(string), which
+        // would throw a TypeError outside the try block below and surface as a
+        // 500. Note that Request::input() returns null (not the default) when
+        // the key exists with a null value, and BSS's global
+        // ConvertEmptyStringsToNull middleware turns "" into null as well.
+        $id = Base64Url::decodeInput($request->input('id'));
+        $clientDataJSON = Base64Url::decodeInput($request->input('clientDataJSON'));
+        $authenticatorData = Base64Url::decodeInput($request->input('authenticatorData'));
+        $signature = Base64Url::decodeInput($request->input('signature'));
+
         if ($id === null || $clientDataJSON === null || $authenticatorData === null || $signature === null) {
             return json(trans('SysHub\Passkey::messages.error.invalid_data'), 1);
+        }
+
+        // userHandle is optional (absent for some non-discoverable credentials),
+        // but when the client does send one it must be decodable.
+        $rawUserHandle = $request->input('userHandle');
+        $userHandle = Base64Url::decodeInput($rawUserHandle);
+        if ($userHandle === null && is_string($rawUserHandle) && $rawUserHandle !== '') {
+            return json(trans('SysHub\Passkey::messages.error.invalid_user_handle'), 1);
         }
         
         // Lookup passkey by credential ID hash
@@ -85,13 +103,13 @@ class LoginController extends Controller
         }
         
         // Decode stored public key (raw binary for processGet)
-        $publicKey = Base64Url::decode($passkey->public_key);
+        $publicKey = Base64Url::decodeInput($passkey->public_key);
         if ($publicKey === null) {
             return json(trans('SysHub\Passkey::messages.error.authentication_failed'), 1);
         }
         
-        // Get and consume challenge (one-time use)
-        $challenge = ChallengeStore::pop('login');
+        // Get and consume the challenge this ceremony used (one-time use).
+        $challenge = ChallengeStore::pop('login', $clientDataJSON);
         if ($challenge === null) {
             return json(trans('SysHub\Passkey::messages.error.invalid_challenge'), 1);
         }
@@ -101,7 +119,11 @@ class LoginController extends Controller
 
             // Verify assertion. lbuchs/WebAuthn processGet signature:
             //   (clientDataJSON, authenticatorData, signature, credentialPublicKey,
-            //    challenge, previousCounter, requireUserVerification)
+            //    challenge, prevSignatureCnt, requireUserVerification,
+            //    requireUserPresent)
+            // Passing prevSignatureCnt also enables the library's own clone
+            // detection: it throws SIGNATURE_COUNTER when the counter does not
+            // advance, which is mapped to a specific message in the catch below.
             $webauthn->processGet(
                 $clientDataJSON,
                 $authenticatorData,
@@ -120,28 +142,8 @@ class LoginController extends Controller
                 }
             }
 
-            // Clone detection: reject the assertion when the signature counter
-            // regresses (both values > 0 means this authenticator uses counters).
             $newCounter = $webauthn->getSignatureCounter();
-            if ($newCounter !== null && $newCounter > 0
-                && (int) $passkey->counter > 0 && $newCounter <= (int) $passkey->counter
-            ) {
-                \Log::warning('[Passkey] Signature counter regression (possible cloned credential)', [
-                    'passkey_id' => $passkey->id,
-                    'stored_counter' => (int) $passkey->counter,
-                    'received_counter' => $newCounter,
-                ]);
-                return json(trans('SysHub\Passkey::messages.error.counter_regression'), 1);
-            }
 
-            if ($newCounter !== null && $newCounter > 0) {
-                $passkey->counter = $newCounter;
-            }
-            
-            // Update last used time
-            $passkey->last_used_at = now();
-            $passkey->save();
-            
             // Get user
             $user = User::find($passkey->uid);
             
@@ -149,8 +151,11 @@ class LoginController extends Controller
                 return json(trans('SysHub\Passkey::messages.error.user_not_found'), 1);
             }
             
-            // Check if user is banned
-            if ($user->status === User::BANNED) {
+            // Check if user is banned.
+            // NOTE: BSS has no `status` column on `users`; the ban flag lives in
+            // `permission` (User::BANNED === -1), which is what the core
+            // RejectBannedUser middleware checks.
+            if ((int) $user->permission === User::BANNED) {
                 return json(trans('SysHub\Passkey::messages.error.user_banned'), 1);
             }
 
@@ -163,35 +168,48 @@ class LoginController extends Controller
                 return json(trans('SysHub\Passkey::messages.error.user_not_verified'), 1);
             }
 
-            // Dispatch events
+            // Only record the counter and last-used time once the login is
+            // actually granted: a rejected attempt should not look like a
+            // successful sign-in in the management UI.
+            if ($newCounter !== null && $newCounter > 0) {
+                $passkey->counter = $newCounter;
+            }
+            $passkey->last_used_at = now();
+            $passkey->save();
+
+            // Dispatch events, mirroring the core password login so that
+            // plugins listening on either the string events or the class event
+            // (login statistics, IP logging, ...) also see passkey logins.
             $dispatcher = app('events');
             $dispatcher->dispatch('auth.login.ready', [$user]);
 
             $remember = filter_var(option('passkey_remember_login', true), FILTER_VALIDATE_BOOLEAN);
             Auth::login($user, $remember);
 
-            // Dispatch succeeded event
             $dispatcher->dispatch('auth.login.succeeded', [$user]);
+            event(new UserLoggedIn($user));
 
-            // Explicit response shape: BSS's json() helper's third argument is
-            // headers, not payload — build the JSON ourselves so the frontend
-            // reliably receives data.redirectTo.
-            return response()->json([
-                'code' => 0,
-                'message' => trans('SysHub\Passkey::messages.login.success'),
-                'data' => [
-                    'redirectTo' => session()->pull('last_requested_path', url('/user')),
-                ],
+            return json(trans('SysHub\Passkey::messages.login.success'), 0, [
+                'redirectTo' => session()->pull('last_requested_path', url('/user')),
             ]);
             
         } catch (\Throwable $e) {
-            $message = trans('SysHub\Passkey::messages.error.authentication_failed');
+            $message = WebAuthnErrors::message($e, 'authentication_failed');
             if (config('app.debug')) {
                 $message .= ': ' . get_class($e) . ': ' . $e->getMessage();
             }
-            \Log::error('[Passkey] Authentication failed', [
-                'exception' => $e,
-            ]);
+
+            if (WebAuthnErrors::isClonedCredential($e)) {
+                \Log::warning('[Passkey] Signature counter did not advance (possible cloned credential)', [
+                    'passkey_id' => $passkey->id,
+                    'stored_counter' => (int) $passkey->counter,
+                ]);
+            } else {
+                \Log::error('[Passkey] Authentication failed', [
+                    'exception' => $e,
+                ]);
+            }
+
             return json($message, 1);
         }
     }

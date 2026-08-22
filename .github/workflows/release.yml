@@ -98,7 +98,7 @@ jobs:
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           PLUGIN_NAME="passkey"
-          ZIP_NAME="${PLUGIN_NAME}-v${VERSION}.zip"
+          ZIP_NAME="${PLUGIN_NAME}-${VERSION}.zip"
 
           # 创建构建和输出目录
           mkdir -p "build/${PLUGIN_NAME}"
@@ -149,57 +149,11 @@ jobs:
               RANGE="HEAD"
             fi
 
-            mapfile -t COMMITS < <(git log $RANGE --pretty=format:'%s|%h' --no-merges)
-
-            if [[ ${#COMMITS[@]} -eq 0 || -z "${COMMITS[0]:-}" ]]; then
-              echo "_此版本无提交记录。_"
-            else
-              declare -A SECTIONS
-              SECTIONS[feat]="### 新功能"
-              SECTIONS[fix]="### Bug 修复"
-              SECTIONS[refactor]="### 重构"
-              SECTIONS[perf]="### 性能优化"
-              SECTIONS[docs]="### 文档"
-              SECTIONS[chore]="### 杂项"
-              SECTIONS[other]="### 其他变更"
-
-              declare -A BUCKETS
-              for key in feat fix refactor perf docs chore other; do
-                BUCKETS[$key]=""
-              done
-
-              COMMIT_PATTERN='^(feat|fix|refactor|perf|docs|chore|ver|update)(\([^)]+\))?(!)?:[[:space:]]*(.+)$'
-
-              for line in "${COMMITS[@]}"; do
-                subject="${line%%|*}"
-                hash="${line##*|}"
-                if [[ "$subject" =~ $COMMIT_PATTERN ]]; then
-                  type="${BASH_REMATCH[1]}"
-                  body="${BASH_REMATCH[4]}"
-                  case "$type" in
-                    ver|update) type="chore" ;;
-                  esac
-                  BUCKETS[$type]+="- ${body}（[\`${hash}\`](https://github.com/${{ github.repository }}/commit/${hash})）"$'\n'
-                else
-                  BUCKETS[other]+="- ${subject}（[\`${hash}\`](https://github.com/${{ github.repository }}/commit/${hash})）"$'\n'
-                fi
-              done
-
-              for key in feat fix refactor perf docs chore other; do
-                if [[ -n "${BUCKETS[$key]}" ]]; then
-                  echo "${SECTIONS[$key]}"
-                  echo
-                  printf '%s' "${BUCKETS[$key]}"
-                  echo
-                fi
-              done
-            fi
-
             echo
             echo "### 安装方法"
             echo
             echo "1. 下载下方的 \`${{ steps.artifact.outputs.artifact }}\` 文件"
-            echo "2. 解压到 Blessing Skin 的 \`plugins/\` 目录"
+            echo "2. 在后台上传或解压到 Blessing Skin 的 \`plugins/\` 目录"
             echo "3. 在后台启用插件"
             echo
             echo "### 环境要求"
@@ -207,7 +161,7 @@ jobs:
             echo "- Blessing Skin Server ^6.0"
             echo "- PHP 8.1+"
             echo "- openssl 和 mbstring 扩展"
-            echo "- HTTPS（localhost 除外）"
+            echo "- HTTPS"
             echo
             echo "**完整变更日志**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-$(git rev-list --max-parents=0 HEAD)}...${TAG}"
           } > release_notes.md

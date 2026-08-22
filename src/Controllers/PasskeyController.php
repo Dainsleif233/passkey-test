@@ -7,8 +7,9 @@ use Auth;
 use SysHub\Passkey\Models\Passkey;
 use SysHub\Passkey\Support\Base64Url;
 use SysHub\Passkey\Support\ChallengeStore;
+use SysHub\Passkey\Support\Requirements;
+use SysHub\Passkey\Support\WebAuthnErrors;
 use SysHub\Passkey\Support\WebAuthnFactory;
-use lbuchs\WebAuthn\WebAuthn;
 use Illuminate\Http\Request;
 
 class PasskeyController extends Controller
@@ -25,18 +26,14 @@ class PasskeyController extends Controller
         
         // Return JSON for AJAX requests
         if ($request->expectsJson() || $request->ajax()) {
-            return response()->json([
-                'code' => 0,
-                'message' => 'ok',
-                'data' => $passkeys->map(function ($pk) {
-                    return [
-                        'id' => $pk->id,
-                        'name' => $pk->name,
-                        'created_at' => $pk->created_at,
-                        'last_used_at' => $pk->last_used_at,
-                    ];
-                }),
-            ]);
+            return json('ok', 0, $passkeys->map(function ($pk) {
+                return [
+                    'id' => $pk->id,
+                    'name' => $pk->name,
+                    'created_at' => $pk->created_at,
+                    'last_used_at' => $pk->last_used_at,
+                ];
+            })->all());
         }
         
         return view('SysHub\Passkey::manage', compact('passkeys'));
@@ -47,13 +44,8 @@ class PasskeyController extends Controller
      */
     public function createOptions()
     {
-        // Precondition checks
-        if (!class_exists(WebAuthn::class)) {
-            return json(trans('SysHub\Passkey::messages.error.webauthn_not_installed'), 1);
-        }
-        
-        if (!\Schema::hasTable('passkeys')) {
-            return json(trans('SysHub\Passkey::messages.error.table_not_found'), 1);
+        if ($failure = Requirements::failure()) {
+            return $failure;
         }
         
         $user = Auth::user();
@@ -63,17 +55,20 @@ class PasskeyController extends Controller
         $excludeIds = Passkey::where('uid', $user->uid)
             ->pluck('credential_id')
             ->map(function ($credentialId) {
-                return Base64Url::decode($credentialId);
+                return Base64Url::decodeInput($credentialId);
             })
             ->filter()
             ->values()
             ->all();
 
-        // lbuchs/WebAuthn v2 getCreateArgs signature:
+        // lbuchs/WebAuthn v2.2 getCreateArgs signature:
         //   (userId, userName, userDisplayName, timeout,
-        //    requireResidentKey, requireUserVerification, excludeCredentials, extensions)
-        // Resident keys are required for usernameless login; UV must be a
-        // boolean — never pass the raw option string (always truthy in PHP).
+        //    requireResidentKey, requireUserVerification,
+        //    crossPlatformAttachment, excludeCredentialIds)
+        // Resident keys are required for usernameless login. The args builders
+        // accept the raw 'required'/'preferred'/'discouraged' string, which is
+        // what we want here so that "discouraged" is not silently downgraded to
+        // "preferred" (only the process* functions need a boolean).
         $userId = pack('J', $user->uid);
         $args = $webauthn->getCreateArgs(
             $userId,
@@ -81,18 +76,13 @@ class PasskeyController extends Controller
             $user->nickname,
             60,
             true, // requireResidentKey: discoverable credential
-            WebAuthnFactory::requireUserVerification(),
+            WebAuthnFactory::getUserVerification(),
+            null, // crossPlatformAttachment: allow platform and cross-platform
             $excludeIds
         );
         
         // Store challenge in session
         ChallengeStore::put('create', $webauthn->getChallenge()->getBinaryString());
-
-        if (config('app.debug')) {
-            $args->_debug = [
-                'challenge_stored' => session()->has('passkey_challenge_create'),
-            ];
-        }
 
         return response()->json($args);
     }
@@ -102,75 +92,70 @@ class PasskeyController extends Controller
      */
     public function register(Request $request)
     {
-        // Precondition checks
-        if (!class_exists(WebAuthn::class)) {
-            return json(trans('SysHub\Passkey::messages.error.webauthn_not_installed'), 1);
-        }
-        
-        if (!\Schema::hasTable('passkeys')) {
-            return json(trans('SysHub\Passkey::messages.error.table_not_found'), 1);
+        if ($failure = Requirements::failure()) {
+            return $failure;
         }
         
         $user = Auth::user();
         
         // Check max passkeys limit
-        $maxPasskeys = max(1, (int) option('passkey_max_passkeys', 5));
+        $maxPasskeys = self::maxPasskeys();
         $currentCount = Passkey::where('uid', $user->uid)->count();
         
         if ($currentCount >= $maxPasskeys) {
             return json(trans('SysHub\Passkey::messages.error.max_passkeys_reached', ['max' => $maxPasskeys]), 1);
         }
         
-        // Validate and decode base64url fields
-        $clientDataJSON = Base64Url::decode($request->input('clientDataJSON', ''));
-        $attestationObject = Base64Url::decode($request->input('attestationObject', ''));
+        // Validate and decode base64url fields (decodeInput guards against a
+        // JSON null/array reaching decode(string) and throwing a TypeError
+        // outside the try block below).
+        $clientDataJSON = Base64Url::decodeInput($request->input('clientDataJSON'));
+        $attestationObject = Base64Url::decodeInput($request->input('attestationObject'));
         
         if ($clientDataJSON === null || $attestationObject === null) {
             return json(trans('SysHub\Passkey::messages.error.invalid_data'), 1);
         }
-        
-        // Get and consume challenge
-        $challenge = ChallengeStore::pop('create');
-        if ($challenge === null) {
-            $msg = trans('SysHub\Passkey::messages.error.invalid_challenge');
-            if (config('app.debug')) {
-                $msg .= ' | session_key_exists: ' . (session()->has('passkey_challenge_create') ? 'yes' : 'no');
-                \Log::debug('[Passkey] Challenge missing', [
-                    'session_id' => session()->getId(),
-                    'session_driver' => config('session.driver'),
-                ]);
-            }
-            return json($msg, 1);
+
+        // Validate the name BEFORE verifying the attestation: rejecting after
+        // processCreate would leave the user's authenticator holding a
+        // credential the server never stored, and the consumed challenge would
+        // force a whole new ceremony.
+        $name = trim((string) $request->input('name', ''));
+        if ($name === '') {
+            $name = 'Passkey ' . ($currentCount + 1);
         }
-        
+
+        // DB column is string(64)
+        if (mb_strlen($name) > 64) {
+            return json(trans('SysHub\Passkey::messages.error.name_too_long'), 1);
+        }
+
+        // Get and consume challenge
+        $challenge = ChallengeStore::pop('create', $clientDataJSON);
+        if ($challenge === null) {
+            return json(trans('SysHub\Passkey::messages.error.invalid_challenge'), 1);
+        }
+
         try {
             $webauthn = WebAuthnFactory::make();
 
-            // Verify attestation. lbuchs/WebAuthn v2 processCreate signature:
+            // Verify attestation. lbuchs/WebAuthn v2.2 processCreate signature:
             //   (clientDataJSON, attestationObject, challenge,
-            //    requireUserVerification, requireResidentKey,
+            //    requireUserVerification, requireUserPresent,
             //    failIfRootMismatch, requireCtsProfileMatch)
+            // Note there is no residentKey check here: the spec gives the server
+            // no reliable way to verify it from the attestation, so discoverable
+            // credentials are only requested via createOptions.
             $result = $webauthn->processCreate(
                 $clientDataJSON,
                 $attestationObject,
                 $challenge,
                 WebAuthnFactory::requireUserVerification(),
-                true,  // requireResidentKey (must match createOptions)
+                true,  // requireUserPresent
                 false, // failIfRootMismatch = false
                 false  // requireCtsProfileMatch = false
             );
-            
-            // Get and validate passkey name
-            $name = trim($request->input('name', ''));
-            if ($name === '') {
-                $name = 'Passkey ' . ($currentCount + 1);
-            }
-            
-            // Validate name length (DB column is string(64))
-            if (mb_strlen($name) > 64) {
-                return json(trans('SysHub\Passkey::messages.error.name_too_long'), 1);
-            }
-            
+
             // Store passkey
             $credentialId = $result->credentialId;
             $credentialIdBinary = is_string($credentialId)
@@ -195,7 +180,15 @@ class PasskeyController extends Controller
                 is_string($publicKey) ? $publicKey : $publicKey->getBinaryString()
             );
             $passkey->attestation_format = $result->attestationFormat ?? 'none';
-            $passkey->aaguid = $result->AAGUID ?? '';
+            // AAGUID is the raw 16-byte binary from authenticatorData
+            // (AuthenticatorData::_readAttestData). Writing it directly into a
+            // utf8mb4 varchar column fails with MySQL error 1366 under strict
+            // mode, so store the hex form (32 chars, fits varchar(36)).
+            $aaguid = $result->AAGUID ?? '';
+            if (!is_string($aaguid)) {
+                $aaguid = method_exists($aaguid, 'getBinaryString') ? $aaguid->getBinaryString() : '';
+            }
+            $passkey->aaguid = $aaguid === '' ? '' : bin2hex($aaguid);
             $passkey->counter = $result->signatureCounter ?? 0;
             $passkey->save();
 
@@ -209,20 +202,16 @@ class PasskeyController extends Controller
 
             // Note: the created_at accessor already returns "Y-m-d H:i:s"
             // (a plain string), so do NOT call ->toDateTimeString() on it.
-            return response()->json([
-                'code' => 0,
-                'message' => trans('SysHub\Passkey::messages.register.success'),
-                'data' => [
-                    'passkey' => [
-                        'id' => $passkey->id,
-                        'name' => $passkey->name,
-                        'created_at' => (string) $passkey->created_at,
-                    ],
+            return json(trans('SysHub\Passkey::messages.register.success'), 0, [
+                'passkey' => [
+                    'id' => $passkey->id,
+                    'name' => $passkey->name,
+                    'created_at' => (string) $passkey->created_at,
                 ],
             ]);
             
         } catch (\Throwable $e) {
-            $message = trans('SysHub\Passkey::messages.error.registration_failed');
+            $message = WebAuthnErrors::message($e, 'registration_failed');
             if (config('app.debug')) {
                 $message .= ': ' . get_class($e) . ': ' . $e->getMessage();
             }
@@ -232,6 +221,20 @@ class PasskeyController extends Controller
             ]);
             return json($message, 1);
         }
+    }
+
+    /**
+     * Configured per-user passkey cap.
+     *
+     * The option is stored as free-form text; ConfigController normalizes it on
+     * save, but values written before that (or by hand) still need a sane
+     * fallback here instead of silently collapsing to 1.
+     */
+    private static function maxPasskeys(): int
+    {
+        $configured = filter_var(option('passkey_max_passkeys', 5), FILTER_VALIDATE_INT);
+
+        return $configured === false ? 5 : min(50, max(1, $configured));
     }
 
     /**

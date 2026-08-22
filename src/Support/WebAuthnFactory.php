@@ -20,7 +20,11 @@ class WebAuthnFactory
     }
 
     /**
-     * Get user verification level from options ("preferred"|"required"|"discouraged")
+     * Get user verification level from options ("preferred"|"required"|"discouraged").
+     *
+     * Pass this to getCreateArgs()/getGetArgs(): those accept the raw string and
+     * forward it to the browser, so all three configured levels stay
+     * distinguishable.
      */
     public static function getUserVerification(): string
     {
@@ -30,9 +34,12 @@ class WebAuthnFactory
     }
 
     /**
-     * The lbuchs/WebAuthn library expects a BOOLEAN for user verification.
-     * Never pass the raw option string: any non-empty string is truthy in PHP,
-     * which would silently force "required".
+     * Whether the server must reject an assertion/attestation without the UV flag.
+     *
+     * Only for processCreate()/processGet(): those evaluate the parameter for
+     * truthiness, so the raw option string must never be passed there (any
+     * non-empty string would silently force "required"). Both "preferred" and
+     * "discouraged" mean "do not enforce" on the server side.
      */
     public static function requireUserVerification(): bool
     {

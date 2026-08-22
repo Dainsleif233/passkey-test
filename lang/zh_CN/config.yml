@@ -23,4 +23,4 @@ remember_login:
 
 max_passkeys:
   title: 每用户最大通行密钥数
-  description: 用户可注册的最大通行密钥数量。
+  description: 用户可注册的最大通行密钥数量。取值 1-50，填写非法值时保存为默认值 5。

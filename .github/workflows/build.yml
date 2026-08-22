@@ -75,7 +75,7 @@ jobs:
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           PLUGIN_NAME="passkey"
-          ZIP_NAME="${PLUGIN_NAME}-v${VERSION}-build.${GITHUB_RUN_NUMBER}.zip"
+          ZIP_NAME="${PLUGIN_NAME}-${VERSION}-build.${GITHUB_RUN_NUMBER}.zip"
 
           # 创建构建和输出目录
           mkdir -p "build/${PLUGIN_NAME}"
@@ -107,7 +107,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: passkey-v${{ steps.version.outputs.version }}-build.${{ github.run_number }}
-          path: dist/passkey-v${{ steps.version.outputs.version }}-build.${{ github.run_number }}.zip
+          name: passkey-${{ steps.version.outputs.version }}-build.${{ github.run_number }}
+          path: dist/passkey-${{ steps.version.outputs.version }}-build.${{ github.run_number }}.zip
           retention-days: 7
           if-no-files-found: error

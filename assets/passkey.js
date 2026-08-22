@@ -83,6 +83,46 @@
         return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
+    // ==================== Feedback ====================
+
+    // Prefer the toast provided by Blessing Skin's own bundle; fall back to
+    // alert() so failures are never swallowed silently when it is unavailable.
+    function notify(type, message) {
+        if (!message) {
+            return;
+        }
+
+        var toast = B.notify && B.notify.toast;
+        if (toast && typeof toast[type] === 'function') {
+            toast[type](message);
+            return;
+        }
+
+        window.alert(message);
+    }
+
+    // Turn a rejected fetch/WebAuthn promise into something readable.
+    function errorMessage(err) {
+        var messages = (config && config.messages) || {};
+
+        if (err) {
+            if (err.name === 'NotAllowedError' && messages.notAllowed) {
+                return messages.notAllowed;
+            }
+            if (err.name === 'InvalidStateError' && messages.invalidState) {
+                return messages.invalidState;
+            }
+            if (err.name === 'NotSupportedError' && messages.notSupported) {
+                return messages.notSupported;
+            }
+            if (err.message) {
+                return err.message;
+            }
+        }
+
+        return messages.error || 'Operation failed';
+    }
+
     // ==================== CSRF Token ====================
 
     function getCsrfToken() {
@@ -154,10 +194,19 @@
             if (res.code === 0 && Array.isArray(res.data)) {
                 passkeys = res.data;
                 renderPasskeyList();
+            } else {
+                throw new Error(res.message || config.messages.error);
             }
         })
         .catch(function (err) {
             console.error('[Passkey] Load error:', err);
+            var message = errorMessage(err);
+            // Never leave the table stuck on the spinner.
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger"></td></tr>';
+                tbody.querySelector('td').textContent = message;
+            }
+            notify('error', message);
         });
     }
 
@@ -175,13 +224,18 @@
     function doCreate() {
         var nameInput = document.getElementById('passkey-name-input');
         var name = nameInput.value.trim();
-        
+        var addBtn = document.getElementById('passkey-add-btn');
+
         $('#passkey-modal').modal('hide');
-        
+
         if (!name) {
             return;
         }
-        
+
+        if (addBtn) {
+            addBtn.disabled = true;
+        }
+
         fetch(config.urls.createOptions, {
             credentials: 'same-origin',
             headers: {
@@ -192,7 +246,7 @@
         .then(function (r) { return r.json(); })
         .then(function (args) {
             if (!args.publicKey) {
-                throw new Error(args.message || 'Failed to load WebAuthn options');
+                throw new Error(args.message || config.messages.error);
             }
             return navigator.credentials.create(convertCreateArgs(args));
         })
@@ -215,6 +269,7 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
             if (res.code === 0) {
+                notify('success', res.message || config.messages.success);
                 loadPasskeys();
             } else {
                 throw new Error(res.message);
@@ -222,6 +277,12 @@
         })
         .catch(function (err) {
             console.error('[Passkey] Create error:', err);
+            notify('error', errorMessage(err));
+        })
+        .finally(function () {
+            if (addBtn) {
+                addBtn.disabled = false;
+            }
         });
     }
 
@@ -268,6 +329,7 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
             if (res.code === 0) {
+                notify('success', res.message || config.messages.success);
                 loadPasskeys();
             } else {
                 throw new Error(res.message);
@@ -275,6 +337,7 @@
         })
         .catch(function (err) {
             console.error('[Passkey] Rename error:', err);
+            notify('error', errorMessage(err));
         });
     }
 
@@ -309,6 +372,7 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
             if (res.code === 0) {
+                notify('success', res.message || config.messages.success);
                 loadPasskeys();
             } else {
                 throw new Error(res.message);
@@ -316,6 +380,7 @@
         })
         .catch(function (err) {
             console.error('[Passkey] Delete error:', err);
+            notify('error', errorMessage(err));
         });
     }
 
@@ -346,6 +411,20 @@
                 return navigator.credentials.get(convertGetArgs(args));
             })
             .then(function (assertion) {
+                var payload = {
+                    id: arrayBufferToB64url(assertion.rawId),
+                    clientDataJSON: arrayBufferToB64url(assertion.response.clientDataJSON),
+                    authenticatorData: arrayBufferToB64url(assertion.response.authenticatorData),
+                    signature: arrayBufferToB64url(assertion.response.signature)
+                };
+
+                // Omit userHandle entirely when the authenticator did not return
+                // one; sending an explicit null makes Laravel's input() hand back
+                // null instead of a default.
+                if (assertion.response.userHandle) {
+                    payload.userHandle = arrayBufferToB64url(assertion.response.userHandle);
+                }
+
                 return fetch(B.base_url + '/auth/passkey/login', {
                     method: 'POST',
                     credentials: 'same-origin',
@@ -354,13 +433,7 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': getCsrfToken()
                     },
-                    body: JSON.stringify({
-                        id: arrayBufferToB64url(assertion.rawId),
-                        clientDataJSON: arrayBufferToB64url(assertion.response.clientDataJSON),
-                        authenticatorData: arrayBufferToB64url(assertion.response.authenticatorData),
-                        signature: arrayBufferToB64url(assertion.response.signature),
-                        userHandle: assertion.response.userHandle ? arrayBufferToB64url(assertion.response.userHandle) : null
-                    })
+                    body: JSON.stringify(payload)
                 });
             })
             .then(function (r) { return r.json(); })

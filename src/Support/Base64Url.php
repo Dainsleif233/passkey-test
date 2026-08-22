@@ -13,6 +13,20 @@ class Base64Url
     }
 
     /**
+     * Decode untrusted request input to base64url, returns null on failure.
+     *
+     * Request payloads can carry JSON null, arrays or objects for a field;
+     * passing those to decode() would raise a TypeError (user-defined
+     * functions never coerce null or arrays to string). Callers decode request
+     * input before entering their try/catch block, so such an exception would
+     * escape as a 500. Treat any non-string as invalid input instead.
+     */
+    public static function decodeInput(mixed $data): ?string
+    {
+        return is_string($data) ? self::decode($data) : null;
+    }
+
+    /**
      * Decode base64url to string, returns null on failure
      */
     public static function decode(string $data): ?string
