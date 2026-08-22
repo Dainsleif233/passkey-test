@@ -69,22 +69,6 @@
 
     // ==================== UI Helpers ====================
 
-    function showAlert(message, type) {
-        var alertEl = document.getElementById('passkey-alert');
-        if (!alertEl) return;
-        
-        alertEl.textContent = message;
-        alertEl.className = 'alert alert-' + (type || 'info');
-        alertEl.style.display = 'block';
-    }
-
-    function hideAlert() {
-        var alertEl = document.getElementById('passkey-alert');
-        if (alertEl) {
-            alertEl.style.display = 'none';
-        }
-    }
-
     function formatDate(dateStr) {
         if (!dateStr) return config.messages.never;
         var d = new Date(dateStr);
@@ -168,13 +152,10 @@
             if (res.code === 0 && Array.isArray(res.data)) {
                 passkeys = res.data;
                 renderPasskeyList();
-            } else {
-                showAlert(res.message || config.messages.error, 'danger');
             }
         })
         .catch(function (err) {
             console.error('[Passkey] Load error:', err);
-            showAlert(config.messages.error, 'danger');
         });
     }
 
@@ -196,12 +177,8 @@
         $('#passkey-modal').modal('hide');
         
         if (!name) {
-            showAlert(config.messages.enterName, 'warning');
             return;
         }
-        
-        hideAlert();
-        showAlert(config.messages.creating, 'info');
         
         fetch(config.urls.createOptions, {
             credentials: 'same-origin',
@@ -236,7 +213,6 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
             if (res.code === 0) {
-                showAlert(config.messages.success, 'success');
                 loadPasskeys();
             } else {
                 throw new Error(res.message);
@@ -244,7 +220,6 @@
         })
         .catch(function (err) {
             console.error('[Passkey] Create error:', err);
-            showAlert(err.message || config.messages.error, 'danger');
         });
     }
 
@@ -278,8 +253,6 @@
     }
 
     function renamePasskey(id, newName) {
-        hideAlert();
-        
         fetch(config.urls.rename + id, {
             method: 'PUT',
             credentials: 'same-origin',
@@ -293,7 +266,6 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
             if (res.code === 0) {
-                showAlert(config.messages.success, 'success');
                 loadPasskeys();
             } else {
                 throw new Error(res.message);
@@ -301,7 +273,6 @@
         })
         .catch(function (err) {
             console.error('[Passkey] Rename error:', err);
-            showAlert(err.message || config.messages.error, 'danger');
         });
     }
 
@@ -325,8 +296,6 @@
     }
 
     function deletePasskey(id) {
-        hideAlert();
-        
         fetch(config.urls.delete + id, {
             method: 'DELETE',
             credentials: 'same-origin',
@@ -338,7 +307,6 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
             if (res.code === 0) {
-                showAlert(config.messages.success, 'success');
                 loadPasskeys();
             } else {
                 throw new Error(res.message);
@@ -346,7 +314,6 @@
         })
         .catch(function (err) {
             console.error('[Passkey] Delete error:', err);
-            showAlert(err.message || config.messages.error, 'danger');
         });
     }
 
