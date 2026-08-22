@@ -128,7 +128,7 @@
                 '<td>' + formatDate(pk.created_at) + '</td>' +
                 '<td>' + formatDate(pk.last_used_at) + '</td>' +
                 '<td><button class="btn btn-danger passkey-delete-btn" data-id="' + pk.id + '">' +
-                config.messages.manage.delete +
+                config.messages.delete +
                 '</button></td>' + '</tr>';
         });
         tbody.innerHTML = html;
