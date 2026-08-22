@@ -154,8 +154,12 @@ class LoginController extends Controller
                 return json(trans('SysHub\Passkey::messages.error.user_banned'), 1);
             }
 
-            // Enforce email verification, same as password login (EnsureEmailIsVerified)
-            if (method_exists($user, 'hasVerifiedEmail') && ! $user->hasVerifiedEmail()) {
+            // Enforce email verification, same as password login (CheckUserVerified).
+            // NOTE: BSS stores verification in its own `verified` boolean column,
+            // NOT Laravel's email_verified_at. The base Authenticatable user does
+            // provide hasVerifiedEmail(), but it reads the non-existent
+            // email_verified_at column and would reject EVERY user.
+            if ((bool) option('require_verification', false) && ! $user->verified) {
                 return json(trans('SysHub\Passkey::messages.error.user_not_verified'), 1);
             }
 
