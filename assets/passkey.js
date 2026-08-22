@@ -78,7 +78,8 @@
     function escapeHtml(str) {
         var div = document.createElement('div');
         div.textContent = str;
-        return div.innerHTML;
+        // innerHTML only escapes & < >; quotes must be escaped for attribute contexts
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // ==================== CSRF Token ====================

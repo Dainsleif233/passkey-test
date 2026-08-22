@@ -83,6 +83,12 @@ class LoginController extends Controller
             return json(trans('SysHub\Passkey::messages.error.passkey_not_found'), 1);
         }
         
+        // Decode stored public key (raw binary for processGet)
+        $publicKey = Base64Url::decode($passkey->public_key);
+        if ($publicKey === null) {
+            return json(trans('SysHub\Passkey::messages.error.authentication_failed'), 1);
+        }
+        
         // Get and consume challenge (one-time use)
         $challenge = ChallengeStore::pop('login');
         if ($challenge === null) {
@@ -101,7 +107,7 @@ class LoginController extends Controller
                 $clientDataJSON,
                 $authenticatorData,
                 $signature,
-                $passkey->public_key,
+                $publicKey,
                 $challenge,
                 $passkey->counter,
                 $uv,

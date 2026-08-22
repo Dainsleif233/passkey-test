@@ -88,8 +88,6 @@ class PasskeyController extends Controller
 
         if (config('app.debug')) {
             $args->_debug = [
-                'session_id' => session()->getId(),
-                'session_driver' => config('session.driver'),
                 'challenge_stored' => session()->has('passkey_challenge_create'),
             ];
         }
@@ -134,10 +132,11 @@ class PasskeyController extends Controller
         if ($challenge === null) {
             $msg = trans('SysHub\Passkey::messages.error.invalid_challenge');
             if (config('app.debug')) {
-                $sessionData = session()->get('passkey_challenge_create');
                 $msg .= ' | session_key_exists: ' . (session()->has('passkey_challenge_create') ? 'yes' : 'no');
-                $msg .= ' | session_id: ' . session()->getId();
-                $msg .= ' | session_driver: ' . config('session.driver');
+                \Log::debug('[Passkey] Challenge missing', [
+                    'session_id' => session()->getId(),
+                    'session_driver' => config('session.driver'),
+                ]);
             }
             return json($msg, 1);
         }
@@ -158,8 +157,8 @@ class PasskeyController extends Controller
             );
             
             // Get and validate passkey name
-            $name = $request->input('name', '');
-            if (empty($name)) {
+            $name = trim($request->input('name', ''));
+            if ($name === '') {
                 $name = 'Passkey ' . ($currentCount + 1);
             }
             
@@ -179,7 +178,10 @@ class PasskeyController extends Controller
             $passkey->name = $name;
             $passkey->credential_id = Base64Url::encode($credentialIdBinary);
             $passkey->credential_id_hash = hash('sha256', $credentialIdBinary);
-            $passkey->public_key = $result->credentialPublicKey;
+            $publicKey = $result->credentialPublicKey;
+            $passkey->public_key = Base64Url::encode(
+                is_string($publicKey) ? $publicKey : $publicKey->getBinaryString()
+            );
             $passkey->attestation_format = $result->attestationFormat ?? 'none';
             $passkey->aaguid = $result->AAGUID ?? '';
             $passkey->counter = $result->signatureCounter ?? 0;
@@ -216,8 +218,8 @@ class PasskeyController extends Controller
             return json(trans('SysHub\Passkey::messages.error.unauthorized'), 1);
         }
         
-        $name = $request->input('name', '');
-        if (empty($name)) {
+        $name = trim($request->input('name', ''));
+        if ($name === '') {
             return json(trans('SysHub\Passkey::messages.error.name_required'), 1);
         }
         
