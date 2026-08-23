@@ -59,10 +59,6 @@ A: 在插件配置中显式设置 RP ID 为所需域名。
 - 公钥和凭据 ID 不会记录到日志
 - 封禁用户、未验证邮箱用户无法通过通行密钥登录
 
-## 协议
-
-本插件使用 [GPL-3.0-only](LICENSE) 协议。
-
 ## 致谢
 
 - [lbuchs/webauthn](https://github.com/lbuchs/WebAuthn) - PHP WebAuthn 库
