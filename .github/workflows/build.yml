@@ -111,3 +111,4 @@ jobs:
           path: dist/passkey-${{ steps.version.outputs.version }}-build.${{ github.run_number }}.zip
           retention-days: 7
           if-no-files-found: error
+          archive: false

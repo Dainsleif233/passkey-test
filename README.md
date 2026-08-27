@@ -61,5 +61,5 @@ A: 在插件配置中显式设置 RP ID 为所需域名。
 
 ## 致谢
 
-- [lbuchs/webauthn](https://github.com/lbuchs/WebAuthn) - PHP WebAuthn 库
-- [Blessing Skin](https://github.com/BS-Community/blessing-skin-server) - 开源 PHP Minecraft 皮肤站
+- [WebAuthn](https://github.com/lbuchs/WebAuthn) - PHP WebAuthn 库
+- [Blessing Skin Server](https://github.com/bs-community/blessing-skin-server) - 开源 PHP Minecraft 皮肤站
